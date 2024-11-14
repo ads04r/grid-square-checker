@@ -1,7 +1,7 @@
 from pykml import parser as kmlparse
-import json, argparse, sys
+import json, argparse, sys, re
 
-class bcolors:
+class bcolours:
 	HEADER = '\033[95m'
 	OKBLUE = '\033[94m'
 	OKCYAN = '\033[96m'
@@ -108,7 +108,38 @@ def build_summary(data):
 	warnings = []
 	errors = []
 
+	for grid_id, ref_data in data.items():
+		if re.match(r'^[EW]\d\d[NS]\d\d\-\d\d$', grid_id) is None:
+			errors.append(grid_id + " is not a valid grid ID")
+			continue
+		if not('uuid' in ref_data):
+			errors.append(grid_id + " has no UUID values")
+			continue
+		if not('coordinates' in ref_data):
+			errors.append(grid_id + " has no coordinate values")
+			continue
+
+		if len(ref_data['uuid']) == 0:
+			warnings.append(grid_id + " has no entry in the database")
+		if len(ref_data['uuid']) > 1:
+			errors.append(grid_id + " is duplicated in the database")
+		if len(ref_data['coordinates']) == 0:
+			warnings.append(grid_id + " has no geometry")
+		if len(ref_data['coordinates']) == 1:
+			warnings.append(grid_id + " has two different geometries (may be OK if they're simply inverses of each other)")
+		if len(ref_data['coordinates']) > 2:
+			errors.append(grid_id + " has " + str(len(ref_data['coordinates'])) + " different geometries")
+
+	warnings.sort()
+	errors.sort()
 	return (warnings, errors)
+
+def message(text, colour=None):
+
+	if colour is None:
+		sys.stderr.write(f'{text}\n')
+	else:
+		sys.stderr.write(f'{colour}{text}{bcolours.ENDC}\n')
 
 if __name__ == "__main__":
 
@@ -123,5 +154,14 @@ if __name__ == "__main__":
 
 	warnings, errors = build_summary(process(args))
 
-	print(warnings)
-	print(errors)
+	if len(warnings) + len(errors) == 0:
+		message("NO ERRORS FOUND!", bcolours.OKGREEN)
+	elif len(errors) == 0:
+		message("VALIDATION PASSED WITH WARNINGS\n", bcolours.WARNING)
+	else:
+		message("VALIDATION FAILED\n", bcolours.FAIL)
+
+	for item in warnings:
+		message(item, bcolours.WARNING)
+	for item in errors:
+		message(item, bcolours.FAIL)
